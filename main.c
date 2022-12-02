@@ -104,38 +104,26 @@ int open_connect_TCP_socket(int *sockfd, char *server_ip, int port)
 
 int parse_pasv_response(char *response, int *port)
 {
-
     char *token;
     char res[MAX_LINE_SIZE];
     int bytes[6];
-    if (response[0] != '2' || response[0] > '5' || response[0] < '1')
-    {
-        return 1;
-    }
 
+    if (response[0] != '2' || response[0] > '5' || response[0] < '1') { return 1;}
+
+    // get last segment of response (with the bytes)
     token = strtok(response, " ");
-    while ((token = strtok(NULL, " ")) != NULL)
-    {
-        strcpy(res, token);
-    }
+    while ((token = strtok(NULL, " ")) != NULL) { strcpy(res, token);}
 
+    // construir array com os bytes ex:[193,137,29,15,196,112]
     token = strtok(res, ",");
-    for (int i = 0; i < 6; i++)
-    {
-        if (i == 0)
-        {
-            bytes[0] = atoi(token + 1);
-        }
-        else
-        {
-            bytes[i] = atoi(token);
-        }
+    for (int i = 0; i < 6; i++){
+        if(i == 0) { bytes[0] = atoi(token + 1);}
+        else { bytes[i] = atoi(token);}
+
         token = strtok(NULL, ",");
     }
-    /*     for(int i = 0; i <6;i++){
-            printf("byte: %i\n", bytes[i]);
-        } */
 
+    // calcular port
     *(port) = bytes[5] + bytes[4] * 256;
 
     return 0;
@@ -152,9 +140,11 @@ void print_socket_response(int sockfd)
         fgets(line, 200, sockf);
         printf("%s", line);
     } while (!('1' <= line[0] && line[0] <= '5') || line[3] != ' ');
+
+    //fclose(sockf); //WHAT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 }
 
-int send_cmd_to_socket(int sockfd, char *cmd, char *arg)
+int send_cmd_to_socket(int sockfd, char *cmd, char *arg) //só permite 1 argumento ou 0 (arg="")
 {
 
     char full_cmd[MAX_LINE_SIZE];
@@ -175,8 +165,29 @@ int send_cmd_to_socket(int sockfd, char *cmd, char *arg)
     //FALTA INTREPRETAR A RESPOSTA !!!
 }
 
-int write_file(int sockfd, char *filename)
-{
+int write_file(int sockfd, char* filename){
+    
+    printf("Downloading file...\n");
+    FILE* f;
+    FILE* sockf;
+
+    if((f = fopen(filename, "w")) == NULL) {
+        printf("error opening new file\n");
+        return 1;
+    }
+    if((sockf = fdopen(sockfd, "r")) == NULL) {
+        printf("error opening socket file;\n");
+        return 1;
+    }
+
+    char c;
+    c = fgetc(sockf);
+    while (c != EOF){
+        fputc(c, f);
+        c = fgetc(sockf);
+    }
+
+    fclose(f);
 }
 
 int main(int argc, char **argv)
@@ -185,7 +196,9 @@ int main(int argc, char **argv)
     char password[MAX_ARG_SIZE];
     char host[MAX_ARG_SIZE];
     char url_path[MAX_ARG_SIZE];
-    unsigned bytes;
+    char ip[MAX_ARG_SIZE];
+    int sockfd, datasocketfd, port;
+    unsigned bytes; // NOT USEFULL !!!!!!!!!!!!!!!!!!!!!!
 
     int bad_arg = parse_arguments(argv, username, password, host, url_path);
     if (argc != 3 || bad_arg)
@@ -195,11 +208,9 @@ int main(int argc, char **argv)
     }
     printf("%s\n%s\n%s\n%s\n", username, password, host, url_path);
 
-    char ip[MAX_ARG_SIZE];
     getIP(host, ip);
     printf("%s", ip);
 
-    int sockfd;
     open_connect_TCP_socket(&sockfd, ip, FTP_PORT);
 
     // print response
@@ -228,12 +239,10 @@ int main(int argc, char **argv)
     printf("%s", line);
 
     // get port from pasv command response
-    int port;
     parse_pasv_response(line, &port);
     printf("port: %u\n", port);
 
     // open data socket
-    int datasocketfd;
     open_connect_TCP_socket(&datasocketfd, ip, port);
 
     // send command (retr)
@@ -247,14 +256,16 @@ int main(int argc, char **argv)
     }
 
     // read file transfered
-    print_socket_response(datasocketfd);
+    //print_socket_response(datasocketfd);
+    write_file(datasocketfd, "file.txt");
 
-    //close data socket
+    // close data socket
     if (close(datasocketfd) < 0)
     {
         perror("close()");
         exit(-1);
     }
 
+    printf("File Downloaded with success!\n");
     return 0;
 }

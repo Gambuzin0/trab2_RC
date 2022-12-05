@@ -11,17 +11,35 @@
 #define MAX_LINE_SIZE 256
 #define MAX_ARG_SIZE 256
 
-int parse_arguments(char **args, char *username, char *password, char *host, char *url_path)
+
+typedef struct
+{
+    char command[MAX_ARG_SIZE];
+    char protocol[MAX_ARG_SIZE];
+    char username[MAX_ARG_SIZE];
+    char password[MAX_ARG_SIZE];
+    char host[MAX_ARG_SIZE];
+    char url_path[MAX_ARG_SIZE];
+    char filename[MAX_ARG_SIZE];
+} parameters;
+
+
+
+
+int parse_arguments(char **args, parameters* params)
 {
 
     char *arg = args[2];
-    // check 1st is download
+
+    // check/get command is download
     if (strcmp(args[1], "download") != 0)
     {
+        printf("%s command is invalid!\n", args[1]);
         return 1;
     }
+    strcpy(params->command, args[1]);
 
-    // check protocol
+    // check/get protocol
     char *segment;
     segment = strtok(arg, "/");
     if (strcmp(segment, "ftp:") != 0)
@@ -29,34 +47,36 @@ int parse_arguments(char **args, char *username, char *password, char *host, cha
         printf("Protocol is invalid!\n");
         return 1;
     }
+    strcpy(params->protocol, segment);
 
     char *credentials_host = strtok(NULL, "/");
 
-    // get url_path
+    // get url_path and filename:
     char *dir;
-    memset(url_path, 0, strlen(url_path));
+    memset(params->url_path, 0, strlen(params->url_path));
     while ((dir = strtok(NULL, "/")) != NULL)
     {
-        strcat(url_path, "/");
-        strcat(url_path, dir);
+        strcat(params->url_path, "/");
+        strcat(params->url_path, dir);
+        strcpy(params->filename, dir);
     }
 
     char *credentials = strtok(credentials_host, "@");
     // get host
-    strcpy(host, strtok(NULL, "@"));
+    strcpy(params->host, strtok(NULL, "@"));
 
     // se input for ftp://"a b":asd]@ftp.up.pt/asdasdasd/asdasd   -> username = "a b"(sem aspas) password = "asd]"
     // se input for ftp://:asd]@ftp.up.pt/asdasdasd/asdasd   -> username = "asd]" password = ""
     // get credentials
-    strcpy(username, strtok(credentials, ":"));
+    strcpy(params->username, strtok(credentials, ":"));
     char *temp_password = strtok(NULL, ":");
     if (temp_password == NULL)
     {
-        strcpy(password, "");
+        strcpy(params->password, "");
     }
     else
     {
-        strcpy(password, temp_password);
+        strcpy(params->password, temp_password);
     }
 
     return 0;
@@ -131,41 +151,65 @@ int parse_pasv_response(char *response, int *port)
 
 void print_socket_response(int sockfd)
 {
-
     char line[MAX_LINE_SIZE];
     FILE *sockf = fdopen(sockfd, "r");
-    do
-    {
-        memset(line, 0, 200);
+
+    printf("\nSocket response:\n");
+    do{
+        // memset(line, 0, 200); secalhar nao é necessário
         fgets(line, 200, sockf);
         printf("%s", line);
     } while (!('1' <= line[0] && line[0] <= '5') || line[3] != ' ');
+    printf("\n");
+    //fechar sockf como? -> acho que não é preciso
+}
 
-    //fclose(sockf); //WHAT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//gets and prints one line from socket and returns error code
+int get_cmd_response(int sockfd, char* response){
+
+    FILE *sockf = fdopen(sockfd, "r");
+    sockf = fdopen(sockfd, "r");
+    memset(response, 0, MAX_LINE_SIZE);
+    fgets(response, MAX_LINE_SIZE, sockf);
+    printf("Response: %s\n", response);
+
+    char error_code[3];
+    error_code[0] = response[0];
+    error_code[1] = response[1];
+    error_code[2] = response[2];
+
+    return atoi(error_code);
 }
 
 int send_cmd_to_socket(int sockfd, char *cmd, char *arg) //só permite 1 argumento ou 0 (arg="")
 {
-
     char full_cmd[MAX_LINE_SIZE];
+    char response[MAX_LINE_SIZE];
     unsigned bytes;
 
     strcpy(full_cmd, cmd);
-    if (strcmp(arg, "") != 0)
-    {
+    if (strcmp(arg, "") != 0){
         strcat(full_cmd, " ");
         strcat(full_cmd, arg);
     }
 
     printf("Sending command \"%s\" ...\n", full_cmd);
     strcat(full_cmd, "\n");
-    bytes = write(sockfd, full_cmd, strlen(full_cmd));
+    if(bytes = write(sockfd, full_cmd, strlen(full_cmd)) == -1){
+        perror("error on write command to sokcet!");
+        exit(-1);
+    }
+
 
 
     //FALTA INTREPRETAR A RESPOSTA !!!
+    return 0;
 }
 
-int write_file(int sockfd, char* filename){
+
+
+
+int download_file(int sockfd, char* filename){
     
     printf("Downloading file...\n");
     FILE* f;
@@ -188,80 +232,70 @@ int write_file(int sockfd, char* filename){
     }
 
     fclose(f);
+    //fechar sockf como? -> acho que não é preciso
 }
 
 int main(int argc, char **argv)
 {
-    char username[MAX_ARG_SIZE];
-    char password[MAX_ARG_SIZE];
-    char host[MAX_ARG_SIZE];
-    char url_path[MAX_ARG_SIZE];
+    parameters params;
     char ip[MAX_ARG_SIZE];
+    char response[MAX_LINE_SIZE];
     int sockfd, datasocketfd, port;
-    unsigned bytes; // NOT USEFULL !!!!!!!!!!!!!!!!!!!!!!
+    unsigned bytes; // NOT USEFULL ?!!!!!!!!!!!!!!!!!!!!!!?
 
-    int bad_arg = parse_arguments(argv, username, password, host, url_path);
-    if (argc != 3 || bad_arg)
+    if (argc != 3 || parse_arguments(argv, &params))
     {
         fprintf(stderr, "Usage: download ftp://[<user>:<password>@]<host>/<url-path>\n");
         exit(-1);
     }
-    printf("%s\n%s\n%s\n%s\n", username, password, host, url_path);
+    printf("username   : %s\npassword   : %s\nhost       : %s\nurl_path   : %s\nfilename   : %s\n\n", params.username, params.password, params.host, params.url_path, params.filename);
 
-    getIP(host, ip);
-    printf("%s", ip);
+    //get IP of host
+    getIP(params.host, ip);
 
     open_connect_TCP_socket(&sockfd, ip, FTP_PORT);
 
-    // print response
+    // print socket response
     print_socket_response(sockfd);
 
     // send command (username)
-    send_cmd_to_socket(sockfd, "user", username);
-
-    print_socket_response(sockfd);
+    send_cmd_to_socket(sockfd, "user", params.username);
+    // print command response
+    get_cmd_response(sockfd, response);
 
     // send command (password)
-    send_cmd_to_socket(sockfd, "pass ", password);
-
-    // print response
-    print_socket_response(sockfd);
+    send_cmd_to_socket(sockfd, "pass ", params.password);
+    // print command response
+    get_cmd_response(sockfd, response);
 
     // send pasv command
-    send_cmd_to_socket(sockfd, "pasv", password);
-
-    // print command (pasv) response
-    char line[MAX_LINE_SIZE];
-    FILE *sockf = fdopen(sockfd, "r");
-    sockf = fdopen(sockfd, "r");
-    memset(line, 0, 200);
-    fgets(line, 200, sockf);
-    printf("%s", line);
-
+    send_cmd_to_socket(sockfd, "pasv", params.password);
+    // print/get command (pasv) response
+    get_cmd_response(sockfd, response);
+    //printf("error_code: %u\n", get_cmd_response(sockfd, response));
     // get port from pasv command response
-    parse_pasv_response(line, &port);
-    printf("port: %u\n", port);
+    parse_pasv_response(response, &port);
+    printf("Data socket port: %u\n", port);
 
     // open data socket
     open_connect_TCP_socket(&datasocketfd, ip, port);
 
     // send command (retr)
-    send_cmd_to_socket(sockfd, "retr", url_path);
+    send_cmd_to_socket(sockfd, "retr", params.url_path);
+    // print command response
+    get_cmd_response(sockfd, response);
 
     // close control socket
-    if (close(sockfd) < 0)
-    {
+    if (close(sockfd) < 0){
         perror("close()");
         exit(-1);
     }
 
     // read file transfered
-    //print_socket_response(datasocketfd);
-    write_file(datasocketfd, "file.txt");
+    download_file(datasocketfd, params.filename);
 
     // close data socket
-    if (close(datasocketfd) < 0)
-    {
+    if (close(datasocketfd) < 0){
         perror("close()");
         exit(-1);
     }

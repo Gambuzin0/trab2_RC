@@ -25,10 +25,8 @@ typedef struct
 
 
 
-
 int parse_arguments(char **args, parameters* params)
 {
-
     char *arg = args[2];
 
     // check/get command is download
@@ -119,6 +117,7 @@ int open_connect_TCP_socket(int *sockfd, char *server_ip, int port)
         perror("connect()");
         exit(-1);
     }
+    
     return 0;
 }
 
@@ -145,6 +144,7 @@ int parse_pasv_response(char *response, int *port)
 
     // calcular port
     *(port) = bytes[5] + bytes[4] * 256;
+    printf("Data socket port: %u\n", *(port));
 
     return 0;
 }
@@ -152,24 +152,31 @@ int parse_pasv_response(char *response, int *port)
 void print_socket_response(int sockfd)
 {
     char line[MAX_LINE_SIZE];
-    FILE *sockf = fdopen(sockfd, "r");
+    FILE *sockf;
+    if((sockf = fdopen(sockfd, "r")) == NULL) {
+        perror("error opening socket file;\n");
+        exit(1);
+    }
 
     printf("\nSocket response:\n");
     do{
-        // memset(line, 0, 200); secalhar nao é necessário
         fgets(line, 200, sockf);
         printf("%s", line);
     } while (!('1' <= line[0] && line[0] <= '5') || line[3] != ' ');
     printf("\n");
-    //fechar sockf como? -> acho que não é preciso
+    
+    return;
 }
 
 //gets and prints one line from socket and returns error code
 int get_cmd_response(int sockfd, char* response){
 
-    FILE *sockf = fdopen(sockfd, "r");
-    sockf = fdopen(sockfd, "r");
-    memset(response, 0, MAX_LINE_SIZE);
+    FILE *sockf;
+    if((sockf = fdopen(sockfd, "r")) == NULL) {
+        printf("error opening socket file;\n");
+        return 1;
+    }
+    memset(response, 0, strlen(response));
     fgets(response, MAX_LINE_SIZE, sockf);
     printf("Response: %s\n", response);
 
@@ -181,11 +188,12 @@ int get_cmd_response(int sockfd, char* response){
     return atoi(error_code);
 }
 
-int send_cmd_to_socket(int sockfd, char *cmd, char *arg) //só permite 1 argumento ou 0 (arg="")
+//sends command to socket, gets the socket reponse and returns the reponse's errorcode
+int send_cmd_to_socket(int sockfd, char *cmd, char *arg, char* response) //só permite 1 argumento ou 0 (arg="")
 {
     char full_cmd[MAX_LINE_SIZE];
-    char response[MAX_LINE_SIZE];
     unsigned bytes;
+    memset(response, 0, strlen(response));
 
     strcpy(full_cmd, cmd);
     if (strcmp(arg, "") != 0){
@@ -200,14 +208,8 @@ int send_cmd_to_socket(int sockfd, char *cmd, char *arg) //só permite 1 argumen
         exit(-1);
     }
 
-
-
-    //FALTA INTREPRETAR A RESPOSTA !!!
-    return 0;
+    return get_cmd_response(sockfd, response);
 }
-
-
-
 
 int download_file(int sockfd, char* filename){
     
@@ -232,8 +234,9 @@ int download_file(int sockfd, char* filename){
     }
 
     fclose(f);
-    //fechar sockf como? -> acho que não é preciso
+    return 0;
 }
+
 
 int main(int argc, char **argv)
 {
@@ -241,65 +244,69 @@ int main(int argc, char **argv)
     char ip[MAX_ARG_SIZE];
     char response[MAX_LINE_SIZE];
     int sockfd, datasocketfd, port;
-    unsigned bytes; // NOT USEFULL ?!!!!!!!!!!!!!!!!!!!!!!?
 
-    if (argc != 3 || parse_arguments(argv, &params))
-    {
+    if (argc != 3 || parse_arguments(argv, &params)){
         fprintf(stderr, "Usage: download ftp://[<user>:<password>@]<host>/<url-path>\n");
         exit(-1);
     }
-    printf("username   : %s\npassword   : %s\nhost       : %s\nurl_path   : %s\nfilename   : %s\n\n", params.username, params.password, params.host, params.url_path, params.filename);
+    printf("username   : %s\npassword   : %s\nhost       : %s\nurl_path   : %s\nfilename   : %s\n", params.username, params.password, params.host, params.url_path, params.filename);
 
     //get IP of host
     getIP(params.host, ip);
 
+    // Open control socket
     open_connect_TCP_socket(&sockfd, ip, FTP_PORT);
 
     // print socket response
     print_socket_response(sockfd);
 
-    // send command (username)
-    send_cmd_to_socket(sockfd, "user", params.username);
-    // print command response
-    get_cmd_response(sockfd, response);
+    // send command (username) and get response
+    if(send_cmd_to_socket(sockfd, "user", params.username, response) != 331){
+        perror("Error Sending username command");
+        exit(1);
+    }
 
-    // send command (password)
-    send_cmd_to_socket(sockfd, "pass ", params.password);
-    // print command response
-    get_cmd_response(sockfd, response);
+    // send command (password) and get response
+    if(send_cmd_to_socket(sockfd, "pass", params.password, response) != 230){
+        perror("Error Sending password command");
+        exit(1);
+    }
 
-    // send pasv command
-    send_cmd_to_socket(sockfd, "pasv", params.password);
-    // print/get command (pasv) response
-    get_cmd_response(sockfd, response);
-    //printf("error_code: %u\n", get_cmd_response(sockfd, response));
+    // send pasv command and get response
+    if(send_cmd_to_socket(sockfd, "pasv", params.password, response) != 227){
+        perror("Error Sending pasv command");
+        exit(1);
+    }
     // get port from pasv command response
     parse_pasv_response(response, &port);
-    printf("Data socket port: %u\n", port);
 
     // open data socket
     open_connect_TCP_socket(&datasocketfd, ip, port);
 
-    // send command (retr)
-    send_cmd_to_socket(sockfd, "retr", params.url_path);
-    // print command response
-    get_cmd_response(sockfd, response);
+    // send command (retr) and get response
+    if(send_cmd_to_socket(sockfd, "retr", params.url_path, response) != 150){
+        perror("Error Sending retr command");
+        exit(1);
+    }
+
+    // download file from data socket
+    if(download_file(datasocketfd, params.filename) == 1){
+        perror("Failed to Download File!\n");
+        exit(1);
+    } else {
+        printf("File Downloaded with success!\n");
+    }
 
     // close control socket
     if (close(sockfd) < 0){
         perror("close()");
         exit(-1);
     }
-
-    // read file transfered
-    download_file(datasocketfd, params.filename);
-
     // close data socket
     if (close(datasocketfd) < 0){
         perror("close()");
         exit(-1);
     }
 
-    printf("File Downloaded with success!\n");
     return 0;
 }

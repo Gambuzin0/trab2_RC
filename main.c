@@ -10,8 +10,6 @@
 #define FTP_PORT 21
 #define MAX_LINE_SIZE 256
 #define MAX_ARG_SIZE 256
-#define DEFAULT_USERNAME "anonymous"
-#define DEFAULT_PASSWORD ""
 
 
 typedef struct
@@ -59,13 +57,6 @@ int parse_arguments(char **args, parameters* params)
         strcat(params->url_path, "/");
         strcat(params->url_path, dir);
         strcpy(params->filename, dir);
-    }
-
-    if(strchr(credentials_host,'@') == NULL){
-        strcpy(params->host, credentials_host);
-        strcpy(params->username, DEFAULT_USERNAME);
-        strcpy(params->password, DEFAULT_PASSWORD);
-        return 0;
     }
 
     char *credentials = strtok(credentials_host, "@");
@@ -130,11 +121,13 @@ int open_connect_TCP_socket(int *sockfd, char *server_ip, int port)
     return 0;
 }
 
-void parse_pasv_response(char *response, int *port)
+int parse_pasv_response(char *response, int *port)
 {
     char *token;
     char res[MAX_LINE_SIZE];
     int bytes[6];
+
+    if (response[0] != '2' || response[0] > '5' || response[0] < '1') { return 1;}
 
     // get last segment of response (with the bytes)
     token = strtok(response, " ");
@@ -153,7 +146,7 @@ void parse_pasv_response(char *response, int *port)
     *(port) = bytes[5] + bytes[4] * 256;
     printf("Data socket port: %u\n", *(port));
 
-    return;
+    return 0;
 }
 
 void print_socket_response(int sockfd)
@@ -161,8 +154,8 @@ void print_socket_response(int sockfd)
     char line[MAX_LINE_SIZE];
     FILE *sockf;
     if((sockf = fdopen(sockfd, "r")) == NULL) {
-        printf("error opening socket file;\n");
-        exit(-1);
+        perror("error opening socket file;\n");
+        exit(1);
     }
 
     printf("\nSocket response:\n");
@@ -185,8 +178,6 @@ int get_cmd_response(int sockfd, char* response){
     }
     memset(response, 0, strlen(response));
     fgets(response, MAX_LINE_SIZE, sockf);
-    if (response[0] > '5' || response[0] < '1') { return -1;}
-
     printf("Response: %s\n", response);
 
     char error_code[3];
@@ -213,7 +204,7 @@ int send_cmd_to_socket(int sockfd, char *cmd, char *arg, char* response) //só p
     printf("Sending command \"%s\" ...\n", full_cmd);
     strcat(full_cmd, "\n");
     if(bytes = write(sockfd, full_cmd, strlen(full_cmd)) == -1){
-        printf("error on write command to sokcet!");
+        perror("error on write command to sokcet!");
         exit(-1);
     }
 
@@ -236,10 +227,10 @@ int download_file(int sockfd, char* filename){
     }
 
     char c;
-    c = fgetc(sockf);
-    while (c != EOF){
+    //c = fgetc(sockf);
+    while (read(sockfd, &c, 1) > 0){
         fputc(c, f);
-        c = fgetc(sockf);
+        //c = fgetc(sockf);
     }
 
     fclose(f);
@@ -252,17 +243,13 @@ int main(int argc, char **argv)
     parameters params;
     char ip[MAX_ARG_SIZE];
     char response[MAX_LINE_SIZE];
-    int sockfd, datasocketfd, port, error_code;
+    int sockfd, datasocketfd, port;
 
     if (argc != 3 || parse_arguments(argv, &params)){
         fprintf(stderr, "Usage: download ftp://[<user>:<password>@]<host>/<url-path>\n");
         exit(-1);
     }
-    printf("username   : %s\n", params.username);
-    printf("password   : %s\n", params.password);
-    printf("host       : %s\n", params.host);
-    printf("url_path   : %s\n", params.url_path);
-    printf("filename   : %s\n", params.filename);
+    printf("username   : %s\npassword   : %s\nhost       : %s\nurl_path   : %s\nfilename   : %s\n", params.username, params.password, params.host, params.url_path, params.filename);
 
     //get IP of host
     getIP(params.host, ip);
@@ -274,21 +261,21 @@ int main(int argc, char **argv)
     print_socket_response(sockfd);
 
     // send command (username) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "user", params.username, response)) != 331){
-        printf("Error Sending username command! error_code= %i\n", error_code);
-        exit(-1);
+    if(send_cmd_to_socket(sockfd, "user", params.username, response) != 331){
+        perror("Error Sending username command");
+        exit(1);
     }
 
     // send command (password) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "pass", params.password, response)) != 230){
-        printf("Error Sending password command! error_code= %i\n", error_code);
-        exit(-1);
+    if(send_cmd_to_socket(sockfd, "pass", params.password, response) != 230){
+        perror("Error Sending password command");
+        exit(1);
     }
 
     // send pasv command and get response
-    if((error_code = send_cmd_to_socket(sockfd, "pasv", params.password, response)) != 227){
-        printf("Error Sending pasv command! error_code= %i\n", error_code);
-        exit(-1);
+    if(send_cmd_to_socket(sockfd, "pasv", params.password, response) != 227){
+        perror("Error Sending pasv command");
+        exit(1);
     }
     // get port from pasv command response
     parse_pasv_response(response, &port);
@@ -297,15 +284,15 @@ int main(int argc, char **argv)
     open_connect_TCP_socket(&datasocketfd, ip, port);
 
     // send command (retr) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "retr", params.url_path, response)) != 150){
-        printf("Error Sending retr command! error_code= %i\n", error_code);
-        exit(-1);
+    if(send_cmd_to_socket(sockfd, "retr", params.url_path, response) != 150){
+        perror("Error Sending retr command");
+        exit(1);
     }
 
     // download file from data socket
     if(download_file(datasocketfd, params.filename) == 1){
-        printf("Failed to Download File!! error_code= %i\n", error_code);
-        exit(-1);
+        perror("Failed to Download File!\n");
+        exit(1);
     } else {
         printf("File Downloaded with success!\n");
     }

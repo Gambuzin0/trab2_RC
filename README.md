@@ -1,5 +1,9 @@
 # trab2_RC
 
+É realizada um verificação do IP recebido na pasv response.
+É realizada uma verificação do nº de bytes enviados e recebidos.
+É realizada uma verificação da presença de um username e/ou password, no caso de ausencia é atribuido um parametro default (user: "anonymous"  | pass: "").
+Em alguns casos de erro a resposta dada pela aplicação não é apenas a do servidor!
 
 ./out download ftp.up.pt/pub/kodi/timestamp.txt
 ./out download ftp://anonymous:@ftp.up.pt/pub/parrot/index.db

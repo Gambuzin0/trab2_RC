@@ -63,30 +63,34 @@ int parse_arguments(char **args, parameters* params)
 
     //check if credentials are present on the string
     //if not default credentials are used
+    strcpy(params->username, DEFAULT_USERNAME);
+    strcpy(params->password, DEFAULT_PASSWORD);
+
     if(strchr(credentials_host,'@') == NULL){
         strcpy(params->host, credentials_host);
-        strcpy(params->username, DEFAULT_USERNAME);
-        strcpy(params->password, DEFAULT_PASSWORD);
         return 0;
     }
 
     char *credentials = strtok(credentials_host, "@");
+    
     // get host
     strcpy(params->host, strtok(NULL, "@"));
 
-    // se input for ftp://"a b":asd]@ftp.up.pt/asdasdasd/asdasd   -> username = "a b"(sem aspas) password = "asd]"
-    // se input for ftp://:asd]@ftp.up.pt/asdasdasd/asdasd   -> username = "asd]" password = ""
     // get credentials
+    if(strcmp(credentials, ":") == 0){
+        return 0;
+    }
+    else if(credentials[0] == ':'){
+        strcpy(params->password, strtok(credentials, ":"));
+        return 0;
+    }
     strcpy(params->username, strtok(credentials, ":"));
     char *temp_password = strtok(NULL, ":");
-    if (temp_password == NULL)
-    {
-        strcpy(params->password, "");
-    }
-    else
-    {
+    if (temp_password != NULL){
         strcpy(params->password, temp_password);
     }
+
+
 
     return 0;
 }

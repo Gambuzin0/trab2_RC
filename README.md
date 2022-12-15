@@ -9,3 +9,4 @@ Em alguns casos de erro a resposta dada pela aplicação não é apenas a do ser
 ./out download ftp://anonymous:@ftp.up.pt/pub/parrot/index.db
 ./out download ftp://anonymous:@ftp.up.pt/pub/archlinux/iso/2022.12.01/archlinux-x86_64.iso  (2.8G)
 ./out download ftp://anonymous:@ftp.up.pt/pub/archlinux/iso/2022.12.01/archlinux-bootstrap-x86_64.tar.gz  (173M)
+./out download ftp://rcom:rcom@netlab1.fe.up.pt/files/crab.mp4    (É preciso VPN)

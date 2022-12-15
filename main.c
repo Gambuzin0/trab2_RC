@@ -249,7 +249,7 @@ int send_cmd_to_socket(int sockfd, char *cmd, char *arg, char* response) //só p
     printf("Sending command \"%s\" ...\n", full_cmd);
     strcat(full_cmd, "\n");
     if(bytes = write(sockfd, full_cmd, strlen(full_cmd)) == -1){
-        printf("error on write command to sokcet!");
+        printf("error on write command to socket!");
         exit(-1);
     }
 
@@ -287,7 +287,7 @@ int main(int argc, char **argv)
 {
     parameters params;
     char response[MAX_LINE_SIZE];
-    int sockfd, datasocketfd, port, error_code;
+    int control_socketfd, data_socketfd, port, error_code;
     int bytes_sent, bytes_received;
 
     if (argc != 3 || parse_arguments(argv, &params)){
@@ -304,25 +304,25 @@ int main(int argc, char **argv)
     getIP(params.host, params.ip);
 
     // Open control socket
-    open_connect_TCP_socket(&sockfd, params.ip, FTP_PORT);
+    open_connect_TCP_socket(&control_socketfd, params.ip, FTP_PORT);
 
     // print socket response
-    print_socket_response(sockfd);
+    print_socket_response(control_socketfd);
 
     // send command (username) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "user", params.username, response)) != 331){
+    if((error_code = send_cmd_to_socket(control_socketfd, "user", params.username, response)) != 331){
         printf("Error Sending username command! error_code = %i\n", error_code);
         exit(-1);
     }
 
     // send command (password) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "pass", params.password, response)) != 230){
+    if((error_code = send_cmd_to_socket(control_socketfd, "pass", params.password, response)) != 230){
         printf("Error Sending password command! error_code = %i\n", error_code);
         exit(-1);
     }
 
     // send pasv command and get response
-    if((error_code = send_cmd_to_socket(sockfd, "pasv", params.password, response)) != 227){
+    if((error_code = send_cmd_to_socket(control_socketfd, "pasv", params.password, response)) != 227){
         printf("Error Sending pasv command! error_code = %i\n", error_code);
         exit(-1);
     }
@@ -332,10 +332,10 @@ int main(int argc, char **argv)
         exit(-1);
     }
     // open data socket
-    open_connect_TCP_socket(&datasocketfd, params.ip, port);
+    open_connect_TCP_socket(&data_socketfd, params.ip, port);
 
     // send command (retr) and get response
-    if((error_code = send_cmd_to_socket(sockfd, "retr", params.url_path, response)) != 150){
+    if((error_code = send_cmd_to_socket(control_socketfd, "retr", params.url_path, response)) != 150){
         printf("Error Sending retr command! error_code = %i\n", error_code);
         exit(-1);
     }
@@ -343,7 +343,7 @@ int main(int argc, char **argv)
     parse_retr_response(response, &bytes_sent);
 
     // download file from data socket
-    if((bytes_received = download_file(datasocketfd, params.filename)) == -1){
+    if((bytes_received = download_file(data_socketfd, params.filename)) == -1){
         printf("Failed to Download File: cannot open files!\n");
         exit(-1);
     } else if(bytes_received != bytes_sent){
@@ -357,12 +357,12 @@ int main(int argc, char **argv)
     }
 
     // close control socket
-    if (close(sockfd) < 0){
+    if (close(control_socketfd) < 0){
         perror("close()");
         exit(-1);
     }
     // close data socket
-    if (close(datasocketfd) < 0){
+    if (close(data_socketfd) < 0){
         perror("close()");
         exit(-1);
     }

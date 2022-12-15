@@ -72,7 +72,7 @@ int parse_arguments(char **args, parameters* params)
     }
 
     char *credentials = strtok(credentials_host, "@");
-    
+
     // get host
     strcpy(params->host, strtok(NULL, "@"));
 
@@ -89,8 +89,6 @@ int parse_arguments(char **args, parameters* params)
     if (temp_password != NULL){
         strcpy(params->password, temp_password);
     }
-
-
 
     return 0;
 }
